@@ -1,0 +1,33 @@
+{
+  "tests": [
+    {
+      "name": "Get all videos",
+      "method": "GET",
+      "path": "/?path=videos",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "0": {
+          "id": "number",
+          "title": "string",
+          "author": "string"
+        }
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Add comment",
+      "method": "POST",
+      "path": "/?path=comment",
+      "body": {
+        "video_id": 1,
+        "user_id": 1,
+        "text": "Test comment"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "id": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -3,6 +3,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Icon from '@/components/ui/icon';
 
 interface Video {
@@ -13,8 +15,7 @@ interface Video {
   thumbnail: string;
   views: string;
   timestamp: string;
-  likes: number;
-  isLiked: boolean;
+  likedBy: Set<string>;
   comments: Comment[];
 }
 
@@ -36,8 +37,7 @@ const Index = () => {
       thumbnail: 'https://images.unsplash.com/photo-1446776653964-20c1d3a81b06?w=800&q=80',
       views: '1.2М',
       timestamp: '2 дня назад',
-      likes: 15420,
-      isLiked: false,
+      likedBy: new Set(['user1', 'user2']),
       comments: [
         {
           id: 1,
@@ -56,8 +56,7 @@ const Index = () => {
       thumbnail: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&q=80',
       views: '856К',
       timestamp: '5 дней назад',
-      likes: 8930,
-      isLiked: false,
+      likedBy: new Set(),
       comments: []
     },
     {
@@ -68,8 +67,7 @@ const Index = () => {
       thumbnail: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800&q=80',
       views: '2.1М',
       timestamp: '1 неделю назад',
-      likes: 24680,
-      isLiked: false,
+      likedBy: new Set(['user3']),
       comments: [
         {
           id: 1,
@@ -95,15 +93,21 @@ const Index = () => {
       thumbnail: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&q=80',
       views: '543К',
       timestamp: '3 дня назад',
-      likes: 12340,
-      isLiked: false,
+      likedBy: new Set(['user1', 'user2', 'user3', 'user4']),
       comments: []
     }
   ]);
 
   const [activeVideo, setActiveVideo] = useState<number | null>(null);
   const [newComment, setNewComment] = useState<{ [key: number]: string }>({});
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [newVideoData, setNewVideoData] = useState({
+    title: '',
+    thumbnail: ''
+  });
+  
   const [currentUser] = useState({
+    id: 'current_user',
     name: 'Вы',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
   });
@@ -111,10 +115,15 @@ const Index = () => {
   const handleLike = (videoId: number) => {
     setVideos(videos.map(video => {
       if (video.id === videoId) {
+        const newLikedBy = new Set(video.likedBy);
+        if (newLikedBy.has(currentUser.id)) {
+          newLikedBy.delete(currentUser.id);
+        } else {
+          newLikedBy.add(currentUser.id);
+        }
         return {
           ...video,
-          isLiked: !video.isLiked,
-          likes: video.isLiked ? video.likes - 1 : video.likes + 1
+          likedBy: newLikedBy
         };
       }
       return video;
@@ -145,6 +154,26 @@ const Index = () => {
     setNewComment({ ...newComment, [videoId]: '' });
   };
 
+  const handleUploadVideo = () => {
+    if (!newVideoData.title.trim() || !newVideoData.thumbnail.trim()) return;
+
+    const newVideo: Video = {
+      id: Date.now(),
+      title: newVideoData.title,
+      author: currentUser.name,
+      avatar: currentUser.avatar,
+      thumbnail: newVideoData.thumbnail,
+      views: '0',
+      timestamp: 'только что',
+      likedBy: new Set(),
+      comments: []
+    };
+
+    setVideos([newVideo, ...videos]);
+    setNewVideoData({ title: '', thumbnail: '' });
+    setIsUploadOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
@@ -171,10 +200,58 @@ const Index = () => {
             </Button>
           </nav>
 
-          <Avatar className="h-10 w-10 border-2 border-primary">
-            <AvatarImage src={currentUser.avatar} />
-            <AvatarFallback>ВЫ</AvatarFallback>
-          </Avatar>
+          <div className="flex items-center gap-3">
+            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Icon name="Plus" size={20} />
+                  <span className="hidden sm:inline">Загрузить</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card border-border">
+                <DialogHeader>
+                  <DialogTitle className="text-foreground">Загрузить видео</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Название видео</label>
+                    <Input
+                      placeholder="Введите название..."
+                      value={newVideoData.title}
+                      onChange={(e) => setNewVideoData({ ...newVideoData, title: e.target.value })}
+                      className="bg-muted border-border text-foreground"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">URL превью</label>
+                    <Input
+                      placeholder="https://example.com/image.jpg"
+                      value={newVideoData.thumbnail}
+                      onChange={(e) => setNewVideoData({ ...newVideoData, thumbnail: e.target.value })}
+                      className="bg-muted border-border text-foreground"
+                    />
+                  </div>
+                  {newVideoData.thumbnail && (
+                    <div className="rounded-lg overflow-hidden border border-border">
+                      <img src={newVideoData.thumbnail} alt="Превью" className="w-full h-48 object-cover" />
+                    </div>
+                  )}
+                  <Button 
+                    onClick={handleUploadVideo} 
+                    disabled={!newVideoData.title.trim() || !newVideoData.thumbnail.trim()}
+                    className="w-full"
+                  >
+                    Опубликовать видео
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Avatar className="h-10 w-10 border-2 border-primary">
+              <AvatarImage src={currentUser.avatar} />
+              <AvatarFallback>ВЫ</AvatarFallback>
+            </Avatar>
+          </div>
         </div>
       </header>
 
@@ -221,14 +298,14 @@ const Index = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleLike(video.id)}
-                    className={`gap-2 ${video.isLiked ? 'text-primary' : 'text-muted-foreground'}`}
+                    className={`gap-2 ${video.likedBy.has(currentUser.id) ? 'text-primary' : 'text-muted-foreground'}`}
                   >
                     <Icon 
                       name="Heart" 
                       size={20} 
-                      className={video.isLiked ? 'fill-primary animate-pulse-like' : ''} 
+                      className={video.likedBy.has(currentUser.id) ? 'fill-primary animate-pulse-like' : ''} 
                     />
-                    <span className="font-medium">{video.likes.toLocaleString()}</span>
+                    <span className="font-medium">{video.likedBy.size}</span>
                   </Button>
                   
                   <Button
