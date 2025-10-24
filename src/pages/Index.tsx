@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -6,172 +6,227 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Icon from '@/components/ui/icon';
+import { useToast } from '@/hooks/use-toast';
+
+const API_URL = 'https://functions.poehali.dev/2214f7cb-da2d-4bc1-a7f2-238770885c6e';
 
 interface Video {
   id: number;
   title: string;
+  thumbnail_url: string;
+  video_url: string;
+  views: number;
+  created_at: string;
+  user_id: number;
   author: string;
-  avatar: string;
-  thumbnail: string;
-  views: string;
-  timestamp: string;
-  likedBy: Set<string>;
+  avatar_url: string;
+  likes_count: number;
   comments: Comment[];
+  liked_by: number[];
 }
 
 interface Comment {
   id: number;
-  author: string;
-  avatar: string;
   text: string;
-  timestamp: string;
+  created_at: string;
+  user_id: number;
+  author: string;
+  avatar_url: string;
 }
 
 const Index = () => {
-  const [videos, setVideos] = useState<Video[]>([
-    {
-      id: 1,
-      title: 'Космические путешествия в 2024',
-      author: 'Космонавт Иван',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=ivan',
-      thumbnail: 'https://images.unsplash.com/photo-1446776653964-20c1d3a81b06?w=800&q=80',
-      views: '1.2М',
-      timestamp: '2 дня назад',
-      likedBy: new Set(['user1', 'user2']),
-      comments: [
-        {
-          id: 1,
-          author: 'Мария К.',
-          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=maria',
-          text: 'Потрясающее видео! Хочу в космос! 🚀',
-          timestamp: '1 час назад'
-        }
-      ]
-    },
-    {
-      id: 2,
-      title: 'Обзор новых технологий',
-      author: 'Техно Блог',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=tech',
-      thumbnail: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&q=80',
-      views: '856К',
-      timestamp: '5 дней назад',
-      likedBy: new Set(),
-      comments: []
-    },
-    {
-      id: 3,
-      title: 'Красота океана в 4K',
-      author: 'Природа HD',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=nature',
-      thumbnail: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800&q=80',
-      views: '2.1М',
-      timestamp: '1 неделю назад',
-      likedBy: new Set(['user3']),
-      comments: [
-        {
-          id: 1,
-          author: 'Алексей П.',
-          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex',
-          text: 'Невероятная красота!',
-          timestamp: '3 дня назад'
-        },
-        {
-          id: 2,
-          author: 'Света Н.',
-          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sveta',
-          text: 'Смотрела уже 5 раз, не могу оторваться',
-          timestamp: '2 дня назад'
-        }
-      ]
-    },
-    {
-      id: 4,
-      title: 'Урок программирования для начинающих',
-      author: 'Код Мастер',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=coder',
-      thumbnail: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&q=80',
-      views: '543К',
-      timestamp: '3 дня назад',
-      likedBy: new Set(['user1', 'user2', 'user3', 'user4']),
-      comments: []
-    }
-  ]);
-
+  const [videos, setVideos] = useState<Video[]>([]);
   const [activeVideo, setActiveVideo] = useState<number | null>(null);
   const [newComment, setNewComment] = useState<{ [key: number]: string }>({});
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [newVideoData, setNewVideoData] = useState({
-    title: '',
-    thumbnail: ''
-  });
-  
-  const [currentUser] = useState({
-    id: 'current_user',
-    name: 'Вы',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'
-  });
+  const [currentUser] = useState({ id: 1, name: 'Вы', avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=user' });
+  const [newVideoTitle, setNewVideoTitle] = useState('');
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
+  const [thumbnailDialogOpen, setThumbnailDialogOpen] = useState(false);
+  const [selectedVideoId, setSelectedVideoId] = useState<number | null>(null);
+  const { toast } = useToast();
 
-  const handleLike = (videoId: number) => {
-    setVideos(videos.map(video => {
-      if (video.id === videoId) {
-        const newLikedBy = new Set(video.likedBy);
-        if (newLikedBy.has(currentUser.id)) {
-          newLikedBy.delete(currentUser.id);
-        } else {
-          newLikedBy.add(currentUser.id);
-        }
-        return {
-          ...video,
-          likedBy: newLikedBy
-        };
-      }
-      return video;
-    }));
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadVideos();
+  }, []);
+
+  const loadVideos = async () => {
+    try {
+      const response = await fetch(`${API_URL}?path=videos`);
+      const data = await response.json();
+      setVideos(data);
+    } catch (error) {
+      toast({ title: 'Ошибка загрузки видео', variant: 'destructive' });
+    }
   };
 
-  const handleAddComment = (videoId: number) => {
+  const handleLike = async (videoId: number) => {
+    const video = videos.find(v => v.id === videoId);
+    const isLiked = video?.liked_by?.includes(currentUser.id);
+
+    try {
+      if (isLiked) {
+        await fetch(`${API_URL}?path=like`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_id: videoId, user_id: currentUser.id })
+        });
+      } else {
+        await fetch(`${API_URL}?path=like`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_id: videoId, user_id: currentUser.id })
+        });
+      }
+      loadVideos();
+    } catch (error) {
+      toast({ title: 'Ошибка', variant: 'destructive' });
+    }
+  };
+
+  const handleAddComment = async (videoId: number) => {
     const commentText = newComment[videoId]?.trim();
     if (!commentText) return;
 
-    setVideos(videos.map(video => {
-      if (video.id === videoId) {
-        const newCommentObj: Comment = {
-          id: Date.now(),
-          author: currentUser.name,
-          avatar: currentUser.avatar,
-          text: commentText,
-          timestamp: 'только что'
-        };
-        return {
-          ...video,
-          comments: [...video.comments, newCommentObj]
-        };
-      }
-      return video;
-    }));
-
-    setNewComment({ ...newComment, [videoId]: '' });
+    try {
+      await fetch(`${API_URL}?path=comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoId,
+          user_id: currentUser.id,
+          text: commentText
+        })
+      });
+      setNewComment({ ...newComment, [videoId]: '' });
+      loadVideos();
+      toast({ title: 'Комментарий добавлен!' });
+    } catch (error) {
+      toast({ title: 'Ошибка', variant: 'destructive' });
+    }
   };
 
-  const handleUploadVideo = () => {
-    if (!newVideoData.title.trim() || !newVideoData.thumbnail.trim()) return;
+  const handleFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
 
-    const newVideo: Video = {
-      id: Date.now(),
-      title: newVideoData.title,
-      author: currentUser.name,
-      avatar: currentUser.avatar,
-      thumbnail: newVideoData.thumbnail,
-      views: '0',
-      timestamp: 'только что',
-      likedBy: new Set(),
-      comments: []
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !newVideoTitle) {
+      toast({ title: 'Введите название видео', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const videoBase64 = await handleFileToBase64(file);
+      await fetch(`${API_URL}?path=video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newVideoTitle,
+          video_url: videoBase64,
+          thumbnail_url: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=800&q=80',
+          user_id: currentUser.id
+        })
+      });
+      setNewVideoTitle('');
+      setUploadDialogOpen(false);
+      loadVideos();
+      toast({ title: 'Видео загружено!' });
+    } catch (error) {
+      toast({ title: 'Ошибка загрузки', variant: 'destructive' });
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const avatarBase64 = await handleFileToBase64(file);
+      await fetch(`${API_URL}?path=user`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          avatar_url: avatarBase64
+        })
+      });
+      currentUser.avatar_url = avatarBase64;
+      setAvatarDialogOpen(false);
+      toast({ title: 'Аватар обновлен!' });
+    } catch (error) {
+      toast({ title: 'Ошибка', variant: 'destructive' });
+    }
+  };
+
+  const handleThumbnailChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedVideoId) return;
+
+    try {
+      const thumbnailBase64 = await handleFileToBase64(file);
+      await fetch(`${API_URL}?path=video`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: selectedVideoId,
+          thumbnail_url: thumbnailBase64
+        })
+      });
+      setThumbnailDialogOpen(false);
+      loadVideos();
+      toast({ title: 'Обложка обновлена!' });
+    } catch (error) {
+      toast({ title: 'Ошибка', variant: 'destructive' });
+    }
+  };
+
+  const handleShare = async (video: Video) => {
+    const shareData = {
+      title: video.title,
+      text: `Посмотрите это видео: ${video.title}`,
+      url: window.location.href
     };
 
-    setVideos([newVideo, ...videos]);
-    setNewVideoData({ title: '', thumbnail: '' });
-    setIsUploadOpen(false);
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast({ title: 'Ссылка скопирована!' });
+      }
+    } catch (error) {
+      toast({ title: 'Не удалось поделиться', variant: 'destructive' });
+    }
+  };
+
+  const formatViews = (views: number) => {
+    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}М`;
+    if (views >= 1000) return `${(views / 1000).toFixed(0)}К`;
+    return views.toString();
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'сегодня';
+    if (diffDays === 1) return 'вчера';
+    if (diffDays < 7) return `${diffDays} дней назад`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} недель назад`;
+    return `${Math.floor(diffDays / 30)} месяцев назад`;
   };
 
   return (
@@ -190,68 +245,74 @@ const Index = () => {
               <Icon name="Home" size={20} className="mr-2" />
               Главная
             </Button>
-            <Button variant="ghost" className="text-foreground hover:text-primary">
-              <Icon name="User" size={20} className="mr-2" />
-              Профиль
-            </Button>
+            
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" className="text-foreground hover:text-primary">
+                  <Icon name="Upload" size={20} className="mr-2" />
+                  Загрузить
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-card">
+                <DialogHeader>
+                  <DialogTitle className="text-foreground">Загрузить видео</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Название видео"
+                    value={newVideoTitle}
+                    onChange={(e) => setNewVideoTitle(e.target.value)}
+                    className="bg-muted text-foreground"
+                  />
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/*,image/*"
+                    onChange={handleVideoUpload}
+                    className="hidden"
+                  />
+                  <Button 
+                    onClick={() => videoInputRef.current?.click()}
+                    className="w-full"
+                    disabled={!newVideoTitle}
+                  >
+                    <Icon name="Upload" size={20} className="mr-2" />
+                    Выбрать файл
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <Button variant="ghost" className="text-foreground hover:text-primary">
               <Icon name="Heart" size={20} className="mr-2" />
               Лайки
             </Button>
           </nav>
 
-          <div className="flex items-center gap-3">
-            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Icon name="Plus" size={20} />
-                  <span className="hidden sm:inline">Загрузить</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-card border-border">
-                <DialogHeader>
-                  <DialogTitle className="text-foreground">Загрузить видео</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Название видео</label>
-                    <Input
-                      placeholder="Введите название..."
-                      value={newVideoData.title}
-                      onChange={(e) => setNewVideoData({ ...newVideoData, title: e.target.value })}
-                      className="bg-muted border-border text-foreground"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">URL превью</label>
-                    <Input
-                      placeholder="https://example.com/image.jpg"
-                      value={newVideoData.thumbnail}
-                      onChange={(e) => setNewVideoData({ ...newVideoData, thumbnail: e.target.value })}
-                      className="bg-muted border-border text-foreground"
-                    />
-                  </div>
-                  {newVideoData.thumbnail && (
-                    <div className="rounded-lg overflow-hidden border border-border">
-                      <img src={newVideoData.thumbnail} alt="Превью" className="w-full h-48 object-cover" />
-                    </div>
-                  )}
-                  <Button 
-                    onClick={handleUploadVideo} 
-                    disabled={!newVideoData.title.trim() || !newVideoData.thumbnail.trim()}
-                    className="w-full"
-                  >
-                    Опубликовать видео
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            <Avatar className="h-10 w-10 border-2 border-primary">
-              <AvatarImage src={currentUser.avatar} />
-              <AvatarFallback>ВЫ</AvatarFallback>
-            </Avatar>
-          </div>
+          <Dialog open={avatarDialogOpen} onOpenChange={setAvatarDialogOpen}>
+            <DialogTrigger asChild>
+              <Avatar className="h-10 w-10 border-2 border-primary cursor-pointer hover:opacity-80 transition-opacity">
+                <AvatarImage src={currentUser.avatar_url} />
+                <AvatarFallback>ВЫ</AvatarFallback>
+              </Avatar>
+            </DialogTrigger>
+            <DialogContent className="bg-card">
+              <DialogHeader>
+                <DialogTitle className="text-foreground">Изменить аватар</DialogTitle>
+              </DialogHeader>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              <Button onClick={() => avatarInputRef.current?.click()} className="w-full">
+                <Icon name="Image" size={20} className="mr-2" />
+                Выбрать фото
+              </Button>
+            </DialogContent>
+          </Dialog>
         </div>
       </header>
 
@@ -263,9 +324,9 @@ const Index = () => {
               className="overflow-hidden bg-card border-border hover:border-primary/50 transition-all duration-300 animate-fade-in"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className="relative group cursor-pointer">
+              <div className="relative group">
                 <img 
-                  src={video.thumbnail} 
+                  src={video.thumbnail_url} 
                   alt={video.title}
                   className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
                 />
@@ -274,12 +335,25 @@ const Index = () => {
                     <Icon name="Play" size={32} className="text-primary-foreground" />
                   </div>
                 </div>
+                {video.user_id === currentUser.id && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => {
+                      setSelectedVideoId(video.id);
+                      setThumbnailDialogOpen(true);
+                    }}
+                  >
+                    <Icon name="Edit" size={16} />
+                  </Button>
+                )}
               </div>
 
               <div className="p-5">
                 <div className="flex items-start gap-3 mb-4">
                   <Avatar className="h-10 w-10 border border-primary/20">
-                    <AvatarImage src={video.avatar} />
+                    <AvatarImage src={video.avatar_url} />
                     <AvatarFallback>{video.author[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -288,7 +362,7 @@ const Index = () => {
                     </h3>
                     <p className="text-sm text-muted-foreground">{video.author}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {video.views} просмотров • {video.timestamp}
+                      {formatViews(video.views)} просмотров • {formatDate(video.created_at)}
                     </p>
                   </div>
                 </div>
@@ -298,14 +372,14 @@ const Index = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleLike(video.id)}
-                    className={`gap-2 ${video.likedBy.has(currentUser.id) ? 'text-primary' : 'text-muted-foreground'}`}
+                    className={`gap-2 ${video.liked_by?.includes(currentUser.id) ? 'text-primary' : 'text-muted-foreground'}`}
                   >
                     <Icon 
                       name="Heart" 
                       size={20} 
-                      className={video.likedBy.has(currentUser.id) ? 'fill-primary animate-pulse-like' : ''} 
+                      className={video.liked_by?.includes(currentUser.id) ? 'fill-primary animate-pulse-like' : ''} 
                     />
-                    <span className="font-medium">{video.likedBy.size}</span>
+                    <span className="font-medium">{video.likes_count}</span>
                   </Button>
                   
                   <Button
@@ -315,12 +389,13 @@ const Index = () => {
                     className="gap-2 text-muted-foreground hover:text-primary"
                   >
                     <Icon name="MessageCircle" size={20} />
-                    <span className="font-medium">{video.comments.length}</span>
+                    <span className="font-medium">{video.comments?.length || 0}</span>
                   </Button>
                   
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleShare(video)}
                     className="gap-2 text-muted-foreground hover:text-primary ml-auto"
                   >
                     <Icon name="Share2" size={20} />
@@ -330,10 +405,10 @@ const Index = () => {
                 {activeVideo === video.id && (
                   <div className="space-y-4 animate-scale-in">
                     <div className="space-y-3">
-                      {video.comments.map((comment) => (
+                      {video.comments?.map((comment) => (
                         <div key={comment.id} className="flex gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={comment.avatar} />
+                            <AvatarImage src={comment.avatar_url} />
                             <AvatarFallback>{comment.author[0]}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1">
@@ -341,7 +416,7 @@ const Index = () => {
                               <p className="text-sm font-medium text-foreground">{comment.author}</p>
                               <p className="text-sm text-foreground/90 mt-1">{comment.text}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1 ml-3">{comment.timestamp}</p>
+                            <p className="text-xs text-muted-foreground mt-1 ml-3">{formatDate(comment.created_at)}</p>
                           </div>
                         </div>
                       ))}
@@ -349,7 +424,7 @@ const Index = () => {
 
                     <div className="flex gap-3">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={currentUser.avatar} />
+                        <AvatarImage src={currentUser.avatar_url} />
                         <AvatarFallback>ВЫ</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 flex gap-2">
@@ -376,6 +451,25 @@ const Index = () => {
           ))}
         </div>
       </main>
+
+      <Dialog open={thumbnailDialogOpen} onOpenChange={setThumbnailDialogOpen}>
+        <DialogContent className="bg-card">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Изменить обложку видео</DialogTitle>
+          </DialogHeader>
+          <input
+            ref={thumbnailInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleThumbnailChange}
+            className="hidden"
+          />
+          <Button onClick={() => thumbnailInputRef.current?.click()} className="w-full">
+            <Icon name="Image" size={20} className="mr-2" />
+            Выбрать фото
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
